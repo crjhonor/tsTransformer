@@ -13,7 +13,7 @@ from tqdm import tqdm
 from sklearn.impute import KNNImputer
 import calendar
 
-dataDirName = "/run/user/1000/gvfs/smb-share:server=crjlambda-pc,share=dataforlater"
+dataDirName = "/home/crjLambda/PycharmProjects/profoundRNN/dataForlater"
 emailReadfilename = Path(dataDirName, "II_seq2seq_moon2sun_cook_email_feature_forlater.json")
 weiboReadfilename = Path(dataDirName, "II_seq2seq_moon2sun_cook_weibo_feature_forlater.json")
 emailFeatures_df = pd.read_json(emailReadfilename)
@@ -24,7 +24,7 @@ weiboFeatures_df.index = weiboFeatures_df['DATE'].apply(lambda x: x.date())
 
 # Get labels and process both the features and labels for deep learning.
 # Also read the indexes
-dataDirName = "/run/user/1000/gvfs/smb-share:server=crjlambda-pc,share=dailytds"
+dataDirName = "/home/crjLambda/PRO80/DailyTDs"
 TD_indexes = pd.read_csv(Path(dataDirName, 'ref_TD.csv'))
 TD_yields_indexes = pd.read_csv(Path(dataDirName, 'ref_yields.csv'))
 TD_Currency_indexes = pd.read_csv(Path(dataDirName, 'ref_Currency.csv'))
@@ -42,7 +42,9 @@ indexWanted_SCM = ["SCM", 'AU0', 'PG0', 'EB0', 'FU0', 'TA0', 'PP0', 'L0', 'V0', 
 indexList = list(np.unique(indexWanted_CU0 + indexWanted_RB0 + indexWanted_SCM))
 
 # Adding bond yields as more features.
-dataDirName = "/run/user/1000/gvfs/smb-share:server=crjlambda-pc,share=profoundrnn_data"
+dataDirName = "/home/crjLambda/PycharmProjects/profoundRNN/data"
+
+SEQUENCE_LEN = 25  # stand for 25 trading days which are very close to one month
 
 class readingYields:
     def __init__(self, yieldsWanted):
@@ -124,7 +126,7 @@ def generate_logr(dataset, isDATE=True):
     return returnDataset
 
 # Read dataset
-dataDirName = "/run/user/1000/gvfs/smb-share:server=crjlambda-pc,share=deeplearn"
+dataDirName = "/home/crjLambda/PRO80/DEEPLEARN"
 TD_all_dataset = pd.read_csv(Path(dataDirName, 'TD_All.csv'))
 indX = TD_all_dataset.columns.values
 indX[0] = 'DATE'
@@ -202,15 +204,19 @@ def generateDatefeature(dataset):
 
 def generateDataset():
     # Now I join the trading data, yields and sentiment results into one dataset.
-    myDataset = datasetClose.copy()
-    myDataset = myDataset.join(featuresYieldsDL_df, rsuffix='_yield')
-    myDataset = myDataset.drop(columns='DATE_yield')
+    rawDataset = datasetClose.copy()
+    rawDataset = rawDataset.join(featuresYieldsDL_df, rsuffix='_yield')
+    rawDataset = rawDataset.drop(columns='DATE_yield')
+    for i in tqdm(range(len(indexesAll_ind)), ncols=100, desc="Generating dataset", colour="blue"):
+        ind = [indexesAll_ind[i]]
     # myDataset = myDataset.join(weiboFeatures_df, rsuffix='_weibo')
     # myDataset = myDataset.drop(columns='DATE_weibo')
     # myDataset = myDataset.join(emailFeatures_df, rsuffix='_email')
     # myDataset = myDataset.drop(columns='DATE_email')
     # Just drop all NaNs
-    myDataset = myDataset.dropna()
+    # myDataset = myDataset.dropna()
     # Generate date feature
-    myDataset = generateDatefeature(myDataset)
-    return myDataset
+    # myDataset = generateDatefeature(myDataset)
+    # return myDataset
+
+generateDataset()
