@@ -14,9 +14,15 @@ My dataset is not necessarily put in the data folder as, in fact, I am using the
 # My Dataset
 ### Discriptions
 I generate my dataset of four parts:
-- Part I: trading data.
+- Part I: trading data. (including commodity trading data, yields of 10 year treasuries, currencies, etc.)
 - Part II: sentiment analysis of public resourced news.
 - Part III: sentiment analysis of social media like weibo.
 - part IV: time features generated from the data obtaining date.
 
+In the beginning, I've already started to generate log return for trading data. Although the current project is inspired 
+by "informer, cookieminions" who actually performed the model into the raw sequence of the trading data, I am thinking
+of the potential outcome from log return rather than the raw sequence.
+
 ### Examples
+![sample_rawDataset_logr.png](sample_rawDataset_logr.png)
+

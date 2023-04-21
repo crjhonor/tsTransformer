@@ -201,14 +201,36 @@ def generateDatefeature(dataset):
     returnDataset['businessday'] = businessdays
     return returnDataset
 
+def generate_logr(dataset, isDATE=True):
+    if isDATE:
+        dataset_DATE = dataset['DATE']
+        dataset_noDATE = dataset.drop(columns=['DATE'])
+    else:
+        dataset_noDATE = dataset
+
+    dataset_noDATE_pct_change = dataset_noDATE.pct_change(periods=1)
+    dataset_noDATE_pct_change = dataset_noDATE_pct_change.iloc[1:]
+    dataset_noDATE_logr = dataset_noDATE_pct_change.applymap(lambda x: np.log(x + 1))
+
+    if isDATE:
+        dataset_DATE = pd.DataFrame(dataset_DATE.iloc[1:])
+        returnDataset = dataset_DATE.join(dataset_noDATE_logr)
+    else:
+        returnDataset = dataset_noDATE_logr
+    return returnDataset
 
 def generateDataset():
     # Now I join the trading data, yields and sentiment results into one dataset.
     rawDataset = datasetClose.copy()
     rawDataset = rawDataset.join(featuresYieldsDL_df, rsuffix='_yield')
     rawDataset = rawDataset.drop(columns='DATE_yield')
+    # Log return is required to perform correlation algorithm etc.
+    rawDataset_logr = generate_logr(rawDataset, isDATE=True)
+
+    # Generating features and labels.
     for i in tqdm(range(len(indexesAll_ind)), ncols=100, desc="Generating dataset", colour="blue"):
         ind = [indexesAll_ind[i]]
+
     # myDataset = myDataset.join(weiboFeatures_df, rsuffix='_weibo')
     # myDataset = myDataset.drop(columns='DATE_weibo')
     # myDataset = myDataset.join(emailFeatures_df, rsuffix='_email')
