@@ -346,7 +346,8 @@ def generateDataset():
             baiduDataset.iloc[l, (l_fv+l_pv+l_ftf_i*l_ftf_j+i)] = past_time_features[l][i]
 
     # I found biadu AI cannot deal with a dataset of so many columns and it needs a DATE column!!!
-    baiduDataset_slim = baiduDataset.iloc[:, :l_fv+l_pv]
+    # baiduDataset_slim = baiduDataset.iloc[:, :l_fv+l_pv]
+    baiduDataset_slim = baiduDataset.iloc[:, :9] # try 9 columns first
     baiduDataset_slim['Date'] = [
         datetime.datetime(year=baiduDataset.loc[i, 'ptf_0'],
                           month=baiduDataset.loc[i, 'ptf_1'],
@@ -358,7 +359,7 @@ def generateDataset():
         index=False
     )
 
-    return past_values, past_time_features, future_values, future_time_features
+    return baiduDataset_slim
 
-past_values, past_time_features, future_values, future_time_features = generateDataset()
-print('Done')
+baiduDataset = generateDataset()
+# print('Done')

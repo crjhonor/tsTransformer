@@ -26,3 +26,12 @@ of the potential outcome from log return rather than the raw sequence.
 ### Examples
 ![sample_rawDataset_logr.png](sample_rawDataset_logr.png)
 
+# Failed Attempt
+### Training online
+I've tried baidu AI and AWS during May 2023, but found it pretty much disappointing. While baidu AI is simple but just
+simply not working, AWS was too complicated and required a huge amount of work to do out sourcing not only one man can 
+achieve. I am thinking that, perhaps I can only stop at where the books published can go so far as the most effective 
+tutorial material enough to make progress for me are all from the books. Ever since the ChatGPT, I found it actually 
+become more difficult than before to get free resources from the internet, specially the programming. 
+
+
