@@ -13,6 +13,8 @@ from tqdm import tqdm
 from sklearn.impute import KNNImputer
 import calendar
 
+source_data = Path("/home/crjLambda/PycharmProjects/tsTransformer/data")
+
 dataDirName = "/home/crjLambda/PycharmProjects/profoundRNN/dataForlater"
 emailReadfilename = Path(dataDirName, "II_seq2seq_moon2sun_cook_email_feature_forlater.json")
 weiboReadfilename = Path(dataDirName, "II_seq2seq_moon2sun_cook_weibo_feature_forlater.json")
@@ -169,6 +171,68 @@ datasetClose.index = pd.to_datetime(datasetClose['DATE'])
 # dataClose_logr = generate_logr(datasetClose)
 # dataClose_logr.index = pd.to_datetime(dataClose_logr['DATE']).apply(lambda x: x.date())
 
+# Read Macro Data
+class readingMacanamonthly:
+    def __init__(self):
+        self.dataDirName = "/home/crjLambda/PycharmProjects/profoundRNN/data"
+        self.readFilename = Path(self.dataDirName, 'MacAnaMonthly_2.xls')
+        self.workSheet = self.readFiles()
+        self.returnFeatures = self.generateFeatures()
+
+    def readFiles(self):
+        Workbook = xlrd.open_workbook(self.readFilename)
+        workSheet = Workbook.sheet_by_index(0)
+        return workSheet
+
+    def generateFeatures(self):
+        # Transfer the worksheet reading by xlrd to DataFrame.
+        workSheet = self.workSheet
+        col_names = []
+        for j in range(workSheet.ncols):
+            if j == 0:
+                col_names.append('DATE')
+            else:
+                col_names.append(workSheet.cell_value(0,j))
+
+        data = np.ones((workSheet.nrows-4, workSheet.ncols))
+        data = pd.DataFrame(data)
+        for j in range(data.shape[1]):
+            for i in range(data.shape[0]):
+                try:
+                    data.iloc[i, j] = workSheet.cell_value(i+4, j)
+                except:
+                    print("err occur:", i, j, workSheet.cell_value(i+4, j))
+        data.columns = col_names
+
+        def f(x):
+            if x == '':
+                return np.nan
+            else:
+                return x
+
+        data = data.applymap(f)
+        # copying last months' data if np.nan
+        for i in range(data.shape[1]):
+            if data.isna().iloc[0, i]:
+                data.iloc[0, i] = data.iloc[1, i]
+
+        data = data.dropna()
+        # # Generate the yield features.
+        returnFeatures = data.copy()
+        # returnFeatures = pd.DataFrame(columns=['DATE']).join(pd.DataFrame(columns=[i for i in self.yieldsWanted]))
+        # for i in returnFeatures.columns:
+        #     if (i=='DATE'):
+        #         returnFeatures[i] = yieldsRead[i][:-1]
+        #     else:
+        #         close_t = np.array(yieldsRead[i][:-1])
+        #         close_tsub1 = np.array(yieldsRead[i][1:])
+        #         returnFeatures[i] = [np.log(close_t[j]/close_tsub1[j])*yieldLambda for j in range(len(close_t))]
+        return returnFeatures
+
+mam = readingMacanamonthly()
+mamDL_df = mam.returnFeatures
+mamDL_df.index = mamDL_df['DATE'].apply(lambda x: pd.to_datetime(x).date())
+
 def get_bussiness_days(current_date: datetime.date):
     last_day = calendar.monthrange(current_date.year, current_date.month)[1]
     rng = pd.date_range(current_date.replace(day=1), periods=last_day, freq='D')
@@ -202,24 +266,6 @@ def generateDatefeature(dataset):
     returnDataset['businessday'] = businessdays
     return returnDataset
 
-def generate_logr(dataset, isDATE=True):
-    if isDATE:
-        dataset_DATE = dataset['DATE']
-        dataset_noDATE = dataset.drop(columns=['DATE'])
-    else:
-        dataset_noDATE = dataset
-
-    dataset_noDATE_pct_change = dataset_noDATE.pct_change(periods=1)
-    dataset_noDATE_pct_change = dataset_noDATE_pct_change.iloc[1:]
-    dataset_noDATE_logr = dataset_noDATE_pct_change.applymap(lambda x: np.log(x + 1))
-
-    if isDATE:
-        dataset_DATE = pd.DataFrame(dataset_DATE.iloc[1:])
-        returnDataset = dataset_DATE.join(dataset_noDATE_logr)
-    else:
-        returnDataset = dataset_noDATE_logr
-    return returnDataset
-
 def myPadding(sequence):
     lengths = [len(s) for s in sequence]
     max_lenbth = max(lengths)
@@ -241,18 +287,20 @@ def myPadding(sequence):
     return reSequence
 
 def generateDataset():
-    # Now I join the trading data, yields and sentiment results into one dataset.
-    rawDataset = datasetClose.copy()
-    rawDataset = rawDataset.join(featuresYieldsDL_df, rsuffix='_yield')
-    rawDataset = rawDataset.drop(columns='DATE_yield')
-    # Log return is required to perform correlation algorithm etc.
-    rawDataset_logr = generate_logr(rawDataset, isDATE=True)
 
+    # Now I join the trading data, yields, sentiment results and macro analysis data into one dataset.
     # Generating features and labels.
-    past_values, future_values, past_time_features, future_time_features = [], [], [], []
+    mamDL = mamDL_df.copy()
+    mamDL.index = range(mamDL.shape[0])
+
     for i in tqdm(range(len(indexesAll_ind)), ncols=100, desc="Generating dataset", colour="blue"):
 
         # Creating the correlation matrix using rawDataset_logr
+        target_inds, daily_timestamps, labels, tradingdata_features, yields_features, sentiment_features \
+            = [], [], [], [], [], []
+
+        rawDataset = datasetClose.copy()
+        rawDataset_logr = generate_logr(rawDataset, isDATE=True)
         rawCols =rawDataset_logr.columns.delete([0]) # DATE column is excluded
         inds = [rawCols[i]]
         [inds.append(ind) for ind in rawCols[0:i]]
@@ -261,105 +309,56 @@ def generateDataset():
         theCorr = beforeCorr.corr() # correlation matrix
         newOrder = theCorr.iloc[0, :].sort_values(axis=0, ascending=False)
         afterCorr = beforeCorr[newOrder.index.to_list()]
+        tradingdata_order = afterCorr.shape[1]
+
+        # Join with yields features
+        afterCorr = afterCorr.join(featuresYieldsDL_df, rsuffix='_yield')
+        afterCorr = afterCorr.drop(columns='DATE')
+        yields_order = afterCorr.shape[1]
 
         # Align with sentiment data
-        sentiment_order = afterCorr.shape[1]
         afterCorr = afterCorr.join(weiboFeatures_df, rsuffix='_weibo')
         afterCorr = afterCorr.drop(columns='DATE')
         afterCorr = afterCorr.join(emailFeatures_df, rsuffix='_email')
         afterCorr = afterCorr.drop(columns='DATE')
         afterCorr = afterCorr.dropna()
+        sentiment_order = afterCorr.shape[1]
 
-        # Generate Date Time features
-        withDatefeature = generateDatefeature(afterCorr)
-        date_order = afterCorr.shape[1]
+        # Generating the dataframe of a single target index
+        for j in range(afterCorr.shape[0]):
+            target_inds.append(rawCols[i])
+            daily_timestamps.append(afterCorr.index[j].date())
+            labels.append(afterCorr.iloc[j, 0])
+            tradingdata_features.append(afterCorr.iloc[j, 0:tradingdata_order].to_list())
+            yields_features.append(afterCorr.iloc[j, tradingdata_order:yields_order].to_list())
+            sentiment_features.append(afterCorr.iloc[j, yields_order:sentiment_order].to_list())
 
-        # Generate all the features we need.
-        for l in range(withDatefeature.shape[0]):
-            # past value and past time feature
-            past_value = withDatefeature.iloc[l, :date_order]
-            past_value = past_value.to_list()
-            past_time_feature = withDatefeature.iloc[l, date_order:]
-            past_time_feature = past_time_feature.squeeze(axis=0)
-            past_time_feature = past_time_feature.astype(np.int32)
-            past_time_feature = past_time_feature.to_list()
-            # feature value and future time feature
-            if (l + SEQUENCE_LEN) <= withDatefeature.shape[0]:
-                future_value = withDatefeature.iloc[l:l+SEQUENCE_LEN, 0]
-                future_time_feature = withDatefeature.iloc[l:l+SEQUENCE_LEN, date_order:]
-            else:
-                future_value = withDatefeature.iloc[l:, 0]
-                future_time_feature = withDatefeature.iloc[l:, date_order:]
-            future_value = future_value.to_list()
-            future_time_feature = [future_time_feature.iloc[r, :].to_list() for r in range(future_time_feature.shape[0])]
-            # Append theses features.
-            past_values.append(past_value)
-            past_time_features.append(past_time_feature)
-            future_values.append(future_value)
-            future_time_features.append(future_time_feature)
+        singleTargetdataset = pd.DataFrame({
+            "target_ind":target_inds,
+            "daily_timestamp":daily_timestamps,
+            "label":labels,
+            "tradingdata_feature":tradingdata_features,
+            "yields_feature":yields_features,
+            "sentiment_features":sentiment_features}
+        )
 
-    print('past values length: {}'.format(len(past_values)))
-    print('past time features length: {}'.format(len(past_time_features)))
-    print('future values length: {}'.format(len(future_values)))
-    print('future time features: {}'.format(len(future_time_features)))
+        # Add macro analysis data columns to the single target dataset
+        singleTargetdataset['DATE'] = ''
+        for k in range(singleTargetdataset.shape[0]):
+            singleTargetdataset.loc[k, 'DATE'] \
+                = datetime.datetime.strftime(singleTargetdataset['daily_timestamp'][k], format="%Y-%m")
+        singleTargetdataset = singleTargetdataset.merge(mamDL, on="DATE", how="left")
+        # Dealing with missing value, just simple copy the lastest.
+        singleTargetdataset = singleTargetdataset.interpolate(method="linear")
 
-    # One more problem before output to deep learning is that the future values may contain shorter length than SEQUENCE
-    # _LEN than I have to padding them using 999 as the <pad> number.
-    future_values = myPadding(future_values)
-    future_time_features = myPadding(future_time_features)
+        if i == 0:
+            returnDataset = singleTargetdataset
+        else:
+            returnDataset = pd.concat([returnDataset, singleTargetdataset], axis=0)
 
-    # Consider saving all the features into csv file. Before that converting them into DataFrame.
-    returnDataframe = pd.DataFrame({
-        'future_values': future_values,
-        'past_values': past_values,
-        'future_time_features': future_time_features,
-        'past_time_features': past_time_features}
-    )
-    returnDataframe.to_csv('/home/crjLambda/PycharmProjects/profoundRNN/dataForlater/myDatasetfordeeplearning.csv',
-                           index=False)
+    # before returning, save it into data folder.
+    returnDataset.to_parquet(source_data/"raw_dataset_before_time_feature.parquet")
+    return returnDataset
 
-    # While attempt to use in baidu AI, this is to generate the necessary dataset formate.
-    l_fv = len(future_values[0])
-    baiduDataset_colnames = [''.join(['fv_', str(i)]) for i in range(l_fv)]
-    l_pv = len(past_values[0])
-    for i in range(l_pv):
-        baiduDataset_colnames.append(''.join(['pv_', str(i)]))
-    l_ftf_i = len(future_time_features[0])
-    l_ftf_j = len(future_time_features[0][0])
-    for i in range(l_ftf_i):
-        for j in range(l_ftf_j):
-            baiduDataset_colnames.append(''.join(['ftf_', str(i), '_', str(j)]))
-    l_ptf = len(past_time_features[0])
-    for i in range(l_ptf):
-        baiduDataset_colnames.append(''.join(['ptf_', str(i)]))
-    l_dataset = len(future_values)
-    baiduDataset = pd.DataFrame(index=range(l_dataset), columns=baiduDataset_colnames)
-    for l in tqdm(range(l_dataset), ncols=100, desc="filling baidu dataset", colour="yellow"):
-        for i in range(l_fv):
-            baiduDataset.iloc[l, i] = future_values[l][i]
-        for i in range(l_pv):
-            baiduDataset.iloc[l, i+l_fv] = past_values[l][i]
-        for i in range(l_ftf_i):
-            for j in range(l_ftf_j):
-                baiduDataset.iloc[l, (l_fv+l_pv+i*l_ftf_j+j)] = future_time_features[l][i][j]
-        for i in range(l_ptf):
-            baiduDataset.iloc[l, (l_fv+l_pv+l_ftf_i*l_ftf_j+i)] = past_time_features[l][i]
-
-    # I found biadu AI cannot deal with a dataset of so many columns and it needs a DATE column!!!
-    # baiduDataset_slim = baiduDataset.iloc[:, :l_fv+l_pv]
-    baiduDataset_slim = baiduDataset.iloc[:, :9] # try 9 columns first
-    baiduDataset_slim['Date'] = [
-        datetime.datetime(year=baiduDataset.loc[i, 'ptf_0'],
-                          month=baiduDataset.loc[i, 'ptf_1'],
-                          day=baiduDataset.loc[i, 'ptf_2']).date() for i in range(l_dataset)
-    ]
-
-    baiduDataset_slim.to_csv(
-        '/home/crjLambda/PycharmProjects/profoundRNN/dataForlater/myDatasetforbaidu.csv',
-        index=False
-    )
-
-    return baiduDataset_slim
-
-baiduDataset = generateDataset()
+raw_dataset_before_time_feature = generateDataset()
 print('Done')

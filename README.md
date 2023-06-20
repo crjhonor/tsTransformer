@@ -71,4 +71,9 @@ to generate time features will be easier as the monthly dataset contains only ye
 - Temporal embedding
 
 ### Steps of target transformatins
+
+## Selecting the models.
+Well, since there are pytorch lightning and pytorch forecast, it is much easier to initiate some famous models including
+N-BEATS, Informer and Autoinformer.
+
  
