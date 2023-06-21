@@ -76,4 +76,6 @@ to generate time features will be easier as the monthly dataset contains only ye
 Well, since there are pytorch lightning and pytorch forecast, it is much easier to initiate some famous models including
 N-BEATS, Informer and Autoinformer.
 
+Please refer to /scripts/trySometransformers.py for the first try.
+
  
