@@ -54,7 +54,7 @@ def generateDatefeature(dataset):
     '''
     returnDataset = dataset.copy()
     # Adding year, month and day
-    returnDataset = returnDataset.set_index("daily_timestamp")
+    returnDataset = returnDataset.set_index("daily_timestamp", drop=False)
     returnDataset['year'] = pd.to_datetime(returnDataset.index).year.values
     returnDataset['month'] = pd.to_datetime(returnDataset.index).month.values
     returnDataset['day'] = pd.to_datetime(returnDataset.index).day.values

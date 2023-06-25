@@ -271,8 +271,8 @@ def generateDataset():
             "target_ind":target_inds,
             "daily_timestamp":daily_timestamps,
             "label":labels,
-            "tradingdata_feature":tradingdata_features,
-            "yields_feature":yields_features,
+            "tradingdata_features":tradingdata_features,
+            "yields_features":yields_features,
             "sentiment_features":sentiment_features}
         )
 
@@ -284,6 +284,9 @@ def generateDataset():
         singleTargetdataset = singleTargetdataset.merge(mamDL, on="DATE", how="left")
         # Dealing with missing value, just simple copy the lastest.
         singleTargetdataset = singleTargetdataset.interpolate(method="linear")
+
+        # Creating a continuous time index for PyTorch Forecasting
+        singleTargetdataset['time_idx'] = range(singleTargetdataset.shape[0])
 
         if i == 0:
             returnDataset = singleTargetdataset
