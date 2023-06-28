@@ -316,4 +316,113 @@ raw_dataset_with_temporal_features_lags, added_features = add_lags(
 raw_dataset_with_temporal_features_lags.to_parquet\
     (source_data / "preprocessed/raw_dataset_with_temporal_feature_lags.parquet")
 
+def generateDataset_expanded():
+
+    # Now I join the trading data, yields, sentiment results and macro analysis data into one dataset.
+    # Generating features and labels.
+    mamDL = mamDL_df.copy()
+    mamDL.index = range(mamDL.shape[0])
+
+    for i in tqdm(range(len(indexesAll_ind)), ncols=100, desc="Generating dataset", colour="blue"):
+
+        # Creating the correlation matrix using rawDataset_logr
+        target_inds, daily_timestamps, labels, tradingdata_features, yields_features, sentiment_features \
+            = [], [], [], [], [], []
+
+        rawDataset = datasetClose.copy()
+        rawDataset_logr = generate_logr(rawDataset, isDATE=True)
+        rawCols =rawDataset_logr.columns.delete([0]) # DATE column is excluded
+        inds = [rawCols[i]]
+        [inds.append(ind) for ind in rawCols[0:i]]
+        [inds.append(ind) for ind in rawCols[i+1:]]
+        beforeCorr = rawDataset_logr[inds]
+        theCorr = beforeCorr.corr() # correlation matrix
+        newOrder = theCorr.iloc[0, :].sort_values(axis=0, ascending=False)
+        afterCorr = beforeCorr[newOrder.index.to_list()]
+        tradingdata_order = afterCorr.shape[1]
+
+        # Join with yields features
+        afterCorr = afterCorr.join(featuresYieldsDL_df, rsuffix='_yield')
+        afterCorr = afterCorr.drop(columns='DATE')
+        yields_order = afterCorr.shape[1]
+
+        # Align with sentiment data
+        afterCorr = afterCorr.join(weiboFeatures_df, rsuffix='_weibo')
+        afterCorr = afterCorr.drop(columns='DATE')
+        afterCorr = afterCorr.join(emailFeatures_df, rsuffix='_email')
+        afterCorr = afterCorr.drop(columns='DATE')
+        afterCorr = afterCorr.dropna()
+        sentiment_order = afterCorr.shape[1]
+
+        # Generating the dataframe of a single target index
+        for j in range(afterCorr.shape[0]):
+            target_inds.append(rawCols[i])
+            daily_timestamps.append(afterCorr.index[j].date())
+            labels.append(afterCorr.iloc[j, 0])
+
+        # For te purpose of forecasting T times head, it makes sense to create these labels.
+        Ts = [1]
+        labels_dict = {}
+        for t in Ts:
+            ls = labels[t:]
+            ls.append(labels[-1]*t)
+            labels_dict.update({f"label_T{t}": ls})
+
+        tradingdata_features_dict = {
+            f"tf_{l}": afterCorr.iloc[:, l] for l in range(0, tradingdata_order)
+        }
+        yields_features_dict = {
+            f"yf_{l}": afterCorr.iloc[:, l] for l in range(tradingdata_order, yields_order)
+        }
+        sentiment_features_dict = {
+            f"sf_{l}": afterCorr.iloc[:, l] for l in range(yields_order, sentiment_order)
+        }
+
+        singleTargetdataset = pd.DataFrame({
+            "target_ind":target_inds,
+            "daily_timestamp":daily_timestamps,
+            "label":labels,
+            **labels_dict,
+            **tradingdata_features_dict,
+            **yields_features_dict,
+            **sentiment_features_dict}
+        )
+
+        # Add macro analysis data columns to the single target dataset
+        singleTargetdataset['DATE'] = ''
+        for k in range(singleTargetdataset.shape[0]):
+            singleTargetdataset.loc[singleTargetdataset.index[k], 'DATE'] \
+                = datetime.datetime.strftime(singleTargetdataset['daily_timestamp'][k], format="%Y-%m")
+        singleTargetdataset.index.name = ''
+        singleTargetdataset = singleTargetdataset.merge(mamDL, on="DATE", how="left")
+        # Dealing with missing value, just simple copy the lastest.
+        singleTargetdataset = singleTargetdataset.interpolate(method="linear")
+
+        # Creating a continuous time index for PyTorch Forecasting
+        singleTargetdataset['time_idx'] = range(singleTargetdataset.shape[0])
+
+        if i == 0:
+            returnDataset = singleTargetdataset
+        else:
+            returnDataset = pd.concat([returnDataset, singleTargetdataset], axis=0)
+
+    return returnDataset
+
+raw_dataset_before_engineering_expanded = generateDataset_expanded()
+# save it into data folder.
+raw_dataset_before_engineering_expanded.to_parquet(source_data / "preprocessed/raw_dataset_before_engineering_expanded.parquet")
+
+raw_dataset_with_temporal_features_expanded = generateDatefeature(raw_dataset_before_engineering_expanded)
+# save it into data folder.
+raw_dataset_with_temporal_features_expanded.to_parquet(source_data / "preprocessed/raw_dataset_with_temporal_feature_expanded.parquet")
+
+# Add lags of the labels in the raw dataset.
+lags = list(range(SEQUENCE_LEN))
+raw_dataset_with_temporal_features_lags_expanded, added_features = add_lags(
+    raw_dataset_with_temporal_features_expanded, lags=lags, column="label", ts_id="target_ind"
+)
+# save it into data folder.
+raw_dataset_with_temporal_features_lags_expanded.to_parquet\
+    (source_data / "preprocessed/raw_dataset_with_temporal_feature_lags_expanded.parquet")
+
 print('Done')
