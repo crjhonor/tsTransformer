@@ -228,10 +228,9 @@ feat_config = FeatureConfig(
 # # For accessing the performance of different models, it is reasonable to drop the latest data with a sacrifice of
 # most uptodate feature injections to become the test dataset. Then lately, when I am using the data to daily practice,
 # I will ignore the test dataset.
-# Take the latest month`s data to be the test dataset.
-currDate = dt.datetime.now() - dt.timedelta(days=1)
-test_mask = (pd.to_datetime(rawDataset.daily_timestamp.values).year == currDate.year) \
-            & (pd.to_datetime(rawDataset.daily_timestamp.values).month == currDate.month)
+# Take the latest 20 days data to be the test dataset.
+currDate = rawDataset.daily_timestamp.max() - dt.timedelta(days=20)
+test_mask = (rawDataset.daily_timestamp >= currDate)
 train_df = rawDataset[~test_mask]
 test_df = rawDataset[test_mask]
 # Combining train and test with a flag
@@ -315,7 +314,7 @@ training = TimeSeriesDataSet(
     time_varying_unknown_categoricals=feat_config.time_varying_known_categoricals,
     time_varying_known_reals=feat_config.time_varying_known_reals,
     time_varying_unknown_reals=[
-        'label_T1',
+        'label',
     ],
     target_normalizer=GroupNormalizer(
         groups=feat_config.group_ids, transformation=None
@@ -384,7 +383,7 @@ print(_.prediction.shape)
 
 # Training the model
 save_model_full = Path(os.getcwd()).parent / f'assa/model/saved_weights/{tag}.wt'
-train_model = True
+train_model = False
 
 if train_model:
     trainer = pl.Trainer(
@@ -432,7 +431,7 @@ pred_df = (
 pred_df[f"{tag}_step_0"] = pred_df[f"{tag}_step_0"].astype(float)
 
 # Evaluating the forecast
-def evaluate_forecast(pred_df, train_data, fc_column, name, target_name='label_T1'):
+def evaluate_forecast(pred_df, train_data, fc_column, name, target_name='label'):
     metric_l = []
     for _id in tqdm(pred_df.index.get_level_values(0).unique(), desc="Calculating metrics..."):
         target = pred_df.xs(_id)[[target_name]]

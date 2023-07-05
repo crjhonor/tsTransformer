@@ -76,6 +76,15 @@ to generate time features will be easier as the monthly dataset contains only ye
 Well, since there are pytorch lightning and pytorch forecast, it is much easier to initiate some famous models including
 N-BEATS, Informer and Autoinformer.
 
-Please refer to /scripts/trySometransformers.py for the first try.
+Finally, I selected a model called Temporal Fusion Transformer(TFT) provided by pytorch lighting and forecasting. 
 
- 
+## Not to predict tomorrow!
+
+It was quite an illusion that, I thought, giving t+1 label into the deep learning model, tomorrow could be predicted or
+forecasted. But, in the real world, this is not going to happen. I haven't figured out why, but the bias and the test 
+using test dataset keep giving very poor performance throughout the process of model selection. Obviously, using hi 
+frequency data to predict the current status (with the help of all candid deploying of data observations), traders can 
+probably react towards the current status, rather than planning what to do the next day.
+
+# Refer to the following code:
+./show_some_progress.py

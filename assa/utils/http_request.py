@@ -10,7 +10,7 @@ import math
 
 os.environ['HTTP_API_KEY'] = '2284526EBB2A4A839B7AD4FF9F1A5DCA'
 apiKey = os.getenv('HTTP_API_KEY')
-getURL = 'http://cn.yufenghy.cn:9009/hq/api/real/multiple?symbol='
+getURL = 'http://http.yufenghy.cn:9009/hq/api/real/multiple?symbol='
 
 class readingHifreq():
     def __init__(
@@ -33,10 +33,10 @@ class readingHifreq():
         return returnDataframe
 
     def getBalance(self):
-        url = 'http://cn.yufenghy.cn:9009/hq/api/balance'
+        url = 'http://http.yufenghy.cn:9009/hq/api/balance'
         results = requests.get(url, headers=self.headers)
         results = results.json()
-        print(results)
+        return results
 
 def _gen_logr(x0: float, x1: float) -> float:
     logr = (x1-x0)/x0
@@ -113,5 +113,7 @@ def fillHifreq(
     return returnDf
 
 # targets = ['FTSE', 'INELU', 'USDX', 'USDCNH', 'GBPUSD', 'EURUSD', 'AUDUSD', 'USDJPY', 'AUDCAD']
+# targets_origin = ['FTSE', 'LUM', 'USDX', 'USDCNH', 'GBPUSD', 'EURUSD', 'AUDUSD', 'USDJPY', 'AUDCAD']
 # rh = readingHifreq()
-# results = rh.reqGet(targets)
+# results = rh.reqGet(targets, targets_origin)
+# print(results)

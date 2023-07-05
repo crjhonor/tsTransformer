@@ -410,7 +410,9 @@ def generateDataset_expanded():
 
     return returnDataset
 
-def generateDataset_expanded_with_more_returns(target):
+def generateDataset_expanded_with_more_returns(targets):
+
+    returnLastDay_fullprices, returnLastDay_newOrders = {}, {}
 
     # Now I join the trading data, yields, sentiment results and macro analysis data into one dataset.
     # Generating features and labels.
@@ -424,8 +426,8 @@ def generateDataset_expanded_with_more_returns(target):
             = [], [], [], [], [], []
 
         rawDataset = datasetClose.copy()
-        if indexesAll_ind[i] == target: # return basic data if target
-            returnLastDay_fullprice = rawDataset.iloc[-1, :]
+        if indexesAll_ind[i] in targets: # return basic data if target
+            returnLastDay_fullprices[indexesAll_ind[i]] = rawDataset.iloc[-1, :]
         rawDataset_logr = generate_logr(rawDataset, isDATE=True)
         rawCols =rawDataset_logr.columns.delete([0]) # DATE column is excluded
         inds = [rawCols[i]]
@@ -436,8 +438,8 @@ def generateDataset_expanded_with_more_returns(target):
         newOrder = theCorr.iloc[0, :].sort_values(axis=0, ascending=False)
         afterCorr = beforeCorr[newOrder.index.to_list()]
         tradingdata_order = afterCorr.shape[1]
-        if indexesAll_ind[i] == target:
-            returnLastDay_newOrder = afterCorr.iloc[-1]
+        if indexesAll_ind[i] in targets:
+            returnLastDay_newOrders[indexesAll_ind[i]] = afterCorr.iloc[-1]
 
         # Join with yields features
         afterCorr = afterCorr.join(featuresYieldsDL_df, rsuffix='_yield')
@@ -504,7 +506,7 @@ def generateDataset_expanded_with_more_returns(target):
         else:
             returnDataset = pd.concat([returnDataset, singleTargetdataset], axis=0)
 
-    return returnDataset, returnLastDay_fullprice, returnLastDay_newOrder
+    return returnDataset, returnLastDay_fullprices, returnLastDay_newOrders
 
 
 def for_training():
@@ -529,9 +531,8 @@ def for_training():
 
 def for_continous_prediction(targets: list):
     assert type(targets) is list, 'the target parameter must be a list of targets, can have only one target in the list'
-    target = targets[0]
-    raw_dataset_before_engineering_expanded, returnLastDay_fullprice, returnLastDay_newOrder = \
-        generateDataset_expanded_with_more_returns(target)
+    raw_dataset_before_engineering_expanded, returnLastDay_fullprices, returnLastDay_newOrders = \
+        generateDataset_expanded_with_more_returns(targets)
 
     raw_dataset_with_temporal_features_expanded = generateDatefeature(raw_dataset_before_engineering_expanded)
 
@@ -541,4 +542,4 @@ def for_continous_prediction(targets: list):
         raw_dataset_with_temporal_features_expanded, lags=lags, column="label", ts_id="target_ind"
     )
 
-    return raw_dataset_with_temporal_features_lags_expanded, returnLastDay_fullprice, returnLastDay_newOrder
+    return raw_dataset_with_temporal_features_lags_expanded, returnLastDay_fullprices, returnLastDay_newOrders

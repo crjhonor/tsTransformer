@@ -13,8 +13,9 @@ from assa.utils.http_request import fillHifreq
 import matplotlib.pyplot as plt
 
 # Obtain the raw dataset for prediction up to the last trading day.
-targets = ['TA0']
-rawDataset, lastDay_fullprice, lastDay_newOrder = readD.for_continous_prediction(targets)
+targets = ['Y0', 'TA0', 'SA0', 'RU0',
+           'SR0', 'V0', 'FG0', 'CF0']
+rawDataset, lastDay_fullprices, lastDay_newOrders = readD.for_continous_prediction(targets)
 
 """
 Creating dataloader and model, train and forecast.
@@ -158,10 +159,9 @@ feat_config = FeatureConfig(
     ]
 )
 
-# Take the latest month`s data to be the test dataset.
-currDate = dt.datetime.now() - dt.timedelta(days=2)
-test_mask = (pd.to_datetime(rawDataset.daily_timestamp.values).year == currDate.year) \
-            & (pd.to_datetime(rawDataset.daily_timestamp.values).month == currDate.month)
+# Take the latest 20 days data to be the test dataset.
+currDate = rawDataset.daily_timestamp.max() - dt.timedelta(days=20)
+test_mask = (rawDataset.daily_timestamp >= currDate)
 train_df = rawDataset[~test_mask]
 test_df = rawDataset[test_mask]
 # Combining train and test with a flag
@@ -260,7 +260,7 @@ training = TimeSeriesDataSet(
     time_varying_unknown_categoricals=feat_config.time_varying_known_categoricals,
     time_varying_known_reals=feat_config.time_varying_known_reals,
     time_varying_unknown_reals=[
-        'label_T1',
+        'label',
     ],
     target_normalizer=GroupNormalizer(
         groups=feat_config.group_ids, transformation=None
@@ -369,20 +369,35 @@ origin_requests_list = [['IF00C1', 'IH00C1', 'CU0', 'T00C1', 'TF00C1', 'CL00Y', 
 
 rq = hr.readingHifreq()
 
-def _pred_visualize(targets: list, Hifreq: float, Pred: float, Baseline_price: float):
+def _pred_visualize(targets: list, info_for_plots: pd.DataFrame):
     # Prepare the dataframe for plotting
-    target = targets[0]
-    Hifreq = Hifreq-Baseline_price
-    Pred = Pred-Baseline_price
-    df = pd.DataFrame({
-        'name': ['Hifreq', 'Pred'],
-        'data': [Hifreq, Pred]
-    })
-    fig = df.plot.barh(x='name', y='data')
-    plt.grid(True)
-    plt.xlabel('Price different from last close.')
-    plt.ylabel('Prediction VS Hi Frequency Data')
-    plt.title(f'{target} Latest')
+    info_for_plots['Hifreq'] = info_for_plots.apply(lambda x: x['currentprice_Hifreq'] - x['lastDay_price'], axis=1)
+    info_for_plots['Pred'] = info_for_plots.apply(lambda x: x['pred_calc_price'] - x['lastDay_price'], axis=1)
+    # Plotting using matplotlib
+    plt.style.use('default')
+    fig, axs = plt.subplots(nrows=2, ncols=math.ceil(len(targets)/2),
+                            constrained_layout=True,
+                            figsize=(15, 10), dpi=200)
+    for num, target in enumerate(targets):
+        x1 = num//math.ceil((len(targets)/2))
+        y1 = num%math.ceil((len(targets)/2))
+        if info_for_plots.loc[target, 'Hifreq'] >= 0:
+            col_H = 'red'
+        else:
+            col_H = 'green'
+        if info_for_plots.loc[target, 'Pred'] >= 0:
+            col_P = 'red'
+        else:
+            col_P = 'green'
+        axs[x1, y1].barh(['Hifreq', 'Pred'],
+                        [info_for_plots.loc[target, 'Hifreq'],
+                         info_for_plots.loc[target, 'Pred']])
+        axs[x1, y1].get_children()[0].set_color(col_H)
+        axs[x1, y1].get_children()[1].set_color(col_P)
+        axs[x1, y1].set_xlabel('Price different from last close.')
+        axs[x1, y1].set_ylabel('Prediction VS Hi Frequency Data')
+        axs[x1, y1].set_title(f'{target} Latest')
+        axs[x1, y1].grid(True)
     plt.show()
 
 def pred_compare(targets: list):
@@ -397,54 +412,74 @@ def pred_compare(targets: list):
 
     latestHifreq = latestHifreq.reset_index()
 
-    target_ind = ''.join([targets[0], 'Close'])
-    for_pred_df = test_df[test_df.target_ind == target_ind]
-    for_pred_df = fillHifreq(for_pred_df, latestHifreq, lastDay_fullprice, lastDay_newOrder, target_ind, isNighttrade=False)
+    info_for_plots = pd.DataFrame(data=None,
+                                  columns=['target', 'currentprice_Hifreq', 'pred_calc_price', 'lastDay_price'])
 
-    # Converting the categoricals to 'object' dtype
-    for itm in feat_config.static_categoricals + feat_config.time_varying_known_categoricals:
-        for_pred_df[itm] = for_pred_df[itm].astype("object")
+    for target in targets:
+        target_ind = ''.join([targets[0], 'Close'])
+        for_pred_df = test_df[test_df.target_ind == target_ind]
+        lastDay_fullprice = lastDay_fullprices[target]
+        lastDay_newOrder = lastDay_newOrders[target]
+        for_pred_df = fillHifreq(for_pred_df, latestHifreq, lastDay_fullprice, lastDay_newOrder, target_ind, isNighttrade=False)
 
-    # Define the test dataset with the same parameters as training
-    test = TimeSeriesDataSet.from_dataset(training, pd.concat([hist_df, for_pred_df]).reset_index(drop=True),
-                                          stop_randomization=True,
-                                          allow_missing_timesteps=True)
+        # Converting the categoricals to 'object' dtype
+        for itm in feat_config.static_categoricals + feat_config.time_varying_known_categoricals:
+            for_pred_df[itm] = for_pred_df[itm].astype("object")
 
-    pred, index = best_model.predict(test, return_index=True, show_progress_bar=True)
-    index[[f"{tag}_step_{i}" for i in range(pred.shape[-1])]] = pred
-    pred_df = for_pred_df[feat_config.index_cols+[feat_config.target]+['time_idx']].copy()
-    pred_df = (
-        pred_df.reset_index(drop=True)
-        .merge(
-            index[["time_idx", "target_ind", f'{tag}_step_0']],
-            on=['time_idx', 'target_ind'],
-            how='left',
-        ).dropna(subset=['target_ind', f'{tag}_step_0'])
-        .set_index(feat_config.index_cols)
-    )
+        # Define the test dataset with the same parameters as training
+        test = TimeSeriesDataSet.from_dataset(training, pd.concat([hist_df, for_pred_df]).reset_index(drop=True),
+                                              stop_randomization=True,
+                                              allow_missing_timesteps=True)
 
-    pred_df[f"{tag}_step_0"] = pred_df[f"{tag}_step_0"].astype(float)
+        pred, index = best_model.predict(test, return_index=True, show_progress_bar=True)
+        index[[f"{tag}_step_{i}" for i in range(pred.shape[-1])]] = pred
+        pred_df = for_pred_df[feat_config.index_cols+[feat_config.target]+['time_idx']].copy()
+        pred_df = (
+            pred_df.reset_index(drop=True)
+            .merge(
+                index[["time_idx", "target_ind", f'{tag}_step_0']],
+                on=['time_idx', 'target_ind'],
+                how='left',
+            ).dropna(subset=['target_ind', f'{tag}_step_0'])
+            .set_index(feat_config.index_cols)
+        )
 
-    # Let's see the Hifreq data is whether stronger or weaker than the model's prediction.
-    currentprice_Hifreq = np.array(latestHifreq['price'][latestHifreq['target_ind'] == targets[0]].astype(float))
-    currentprice_Hifreq = round(currentprice_Hifreq[0])
-    # Calculate the model's prediction into price
-    pred_logr = pred_df[f"{tag}_step_0"][-1]
-    lastDay_price = lastDay_fullprice.loc[''.join([targets[0], 'Close'])]
-    pred_calc_price = round(math.e**pred_logr * lastDay_price)
-    # Print output.
-    currentTime = dt.datetime.now()
-    print(f"Target: [{targets[0]}] at time {currentTime.strftime(format='%Y-%m-%d %H:%M:%S')}")
-    print("="*50)
-    print(f"Current Price: [{currentprice_Hifreq}]")
-    print(f"Calculated Price: [{pred_calc_price}]")
-    if currentprice_Hifreq > pred_calc_price:
-        print(f"It is [STRONG], you should be [LONGING].")
-    elif currentprice_Hifreq < pred_calc_price:
-        print(f"It is [WEAK], you should be [SHORTING].")
-    print("="*50)
+        pred_df[f"{tag}_step_0"] = pred_df[f"{tag}_step_0"].astype(float)
 
+        # Let's see the Hifreq data is whether stronger or weaker than the model's prediction.
+        currentprice_Hifreq = np.array(latestHifreq['price'][latestHifreq['target_ind'] == target].astype(float))
+        currentprice_Hifreq = round(currentprice_Hifreq[0])
+        # Calculate the model's prediction into price
+        pred_logr = pred_df[f"{tag}_step_0"][-1]
+        lastDay_price = round(lastDay_fullprice.loc[''.join([target, 'Close'])])
+        pred_calc_price = round(math.e**pred_logr * lastDay_price)
+        # Print output.
+        currentTime = dt.datetime.now()
+        print(f"Target: [{target}] at time {currentTime.strftime(format='%Y-%m-%d %H:%M:%S')}")
+        print("="*50)
+        print(f"Current Price: [{currentprice_Hifreq}]")
+        print(f"Calculated Price: [{pred_calc_price}]")
+        if currentprice_Hifreq > pred_calc_price:
+            print(f"It is [STRONG], you should be [LONGING].")
+        elif currentprice_Hifreq < pred_calc_price:
+            print(f"It is [WEAK], you should be [SHORTING].")
+        print("="*50)
+
+        info_dict = dict(
+            target=target,
+            currentprice_Hifreq=currentprice_Hifreq,
+            pred_calc_price=pred_calc_price,
+            lastDay_price=lastDay_price
+        )
+
+        info_for_plots = pd.concat([info_for_plots, pd.DataFrame(info_dict, index=[target])])
+
+    return info_for_plots
     # visualize the results
-    _pred_visualize(targets, currentprice_Hifreq, pred_calc_price, lastDay_price)
+    # _pred_visualize(targets, info_for_plots)
 
-pred_compare(targets)
+def get_api_balance():
+    results = rq.getBalance()
+    return results
+
+# pred_compare(targets)
